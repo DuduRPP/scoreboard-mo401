@@ -16,7 +16,7 @@ class Instruction:
         self.reads: List[Register] = reads or []   # source registers
         self.writes: List[Register] = writes or [] # target registers
     def __str__(self):
-        return f"{self.__class__.__name__}({self.__dict__})"
+        return f"{self.__class__.__name__}({self.op}, reads={', '.join(str(r) for r in self.reads)}, writes={', '.join(str(r) for r in self.writes)})"
     def __repr__(self):
         return self.__str__()
 
