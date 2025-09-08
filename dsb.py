@@ -275,7 +275,7 @@ class Scoreboard:
         write=None,
     ):
         self.instruction_status[instr] = {
-            "Instruction": instr.original_instr(),
+            "Instruction/Cycle": instr.original_instr(),
             "Issue": issue,
             "Read": read,
             "Execute": execute,

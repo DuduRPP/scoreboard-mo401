@@ -5,10 +5,10 @@
 - WAR hazard: (instruction: 4) fadd f2, f5, f8 cannot write to f2 because fmul f4, f2, f6 needs to read it.
 
 ## Scoreboard:
-| Instruction     |   Issue |   Read |   Execute |   Write |
-|:----------------|--------:|-------:|----------:|--------:|
-| fld f2, x1      |       1 |      2 |         3 |       4 |
-| fdiv f6, f9, f3 |       2 |      3 |        13 |      14 |
-| fmul f4, f2, f6 |       3 |     15 |        19 |      20 |
-| fadd f2, f5, f8 |       5 |      6 |         8 |      16 |
-| fsd f2, x1      |       6 |     17 |        18 |      19 |
+| Instruction/Cycle   |   Issue |   Read |   Execute |   Write |
+|:--------------------|--------:|-------:|----------:|--------:|
+| fld f2, x1          |       1 |      2 |         3 |       4 |
+| fdiv f6, f9, f3     |       2 |      3 |        13 |      14 |
+| fmul f4, f2, f6     |       3 |     15 |        19 |      20 |
+| fadd f2, f5, f8     |       5 |      6 |         8 |      16 |
+| fsd f2, x1          |       6 |     17 |        18 |      19 |
