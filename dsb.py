@@ -54,7 +54,7 @@ class CPU:
 
         for fu in self.funits.values():
             result = None
-            if fu.state != "Read" and fu.state != "Issue":
+            if fu.state != "Read" and fu.state != "Issue" and fu.state != "ReadNext":
                 result = fu.tick()
             if result is not None:
                 self.scoreboard.update_entry(result[0], result[1], self.cycle)
@@ -73,7 +73,7 @@ class CPU:
                                 other_fu.rk = True
 
         for fu in self.funits.values():
-            if fu.state == "Read" or fu.state == "Issue":
+            if fu.state == "Read" or fu.state == "Issue" or fu.state == "ReadNext":
                 result = fu.tick()
                 if result is not None:
                     self.scoreboard.update_entry(result[0], result[1], self.cycle)
