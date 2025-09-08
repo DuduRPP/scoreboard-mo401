@@ -1,0 +1,4 @@
+Hazards detected during execution:
+- Structural hazard: No available functional unit (int) for instruction fld f5, x1 (instruction: 2)
+- RAW hazard: (instruction: 3) fdiv f2, f4, f5 cannot read f5 because it is being written by another instruction.
+

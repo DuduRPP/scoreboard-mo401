@@ -1,44 +1,50 @@
 import os
 import sys
-from dsb import CPU, Scoreboard, load_fu_config
-from dsb_parser import DSBLexer, DSBParser
+from dsb import run_simulation
 
 
-def run_scoreboard(config_file, source_file, out_dir):
-    # load FU config
-    funits = load_fu_config(config_file)
-    scoreboard = Scoreboard()
-    cpu = CPU(funits, scoreboard=scoreboard)
+def run_scoreboard(
+    config_file, source_file, out_dir, show_hazards=False, hide_scoreboard=False
+):
+    # Run the simulation (Scoreboard + Hazards list)
+    scoreboard, hazards = run_simulation(
+        config_file, source_file, detect_hazards=show_hazards
+    )
 
-    # parse assembly
-    lexer = DSBLexer()
-    parser = DSBParser()
-    with open(source_file) as f:
-        instructions = parser.parse(lexer.tokenize(f.read()))
-    cpu.load_instructions(instructions)
-
-    # run simulation
-    cpu.run()
-
-    # results filename
+    # Results filename
     base_config = os.path.splitext(os.path.basename(config_file))[0]
     base_source = os.path.splitext(os.path.basename(source_file))[0]
     out_file = os.path.join(out_dir, f"{base_config}-{base_source}.out")
 
-    # dump scoreboard
+    # Write results
     with open(out_file, "w") as f:
-        f.write(scoreboard.to_markdown())
-        f.write("\n")
+        if show_hazards and hazards:
+            f.write("Hazards detected during execution:\n")
+            for hz in dict.fromkeys(hazards):  # deduplicate & preserve order
+                f.write(f"- {hz}\n")
+            f.write("\n")
+        if not hide_scoreboard:
+            f.write(scoreboard.to_markdown())
+            f.write("\n")
 
     print(f"[🆗] {config_file} + {source_file} -> {out_file}")
 
 
 if __name__ == "__main__":
-    base_dir = os.path.dirname(__file__)
+    base_dir = (
+        os.path.dirname(os.path.abspath(__file__))
+        if "__file__" in globals()
+        else os.getcwd()
+    )
     config_dir = os.path.join(base_dir, "tests")
     source_dir = os.path.join(base_dir, "tests")
-    results_dir = os.path.join(base_dir, "tests", "results")
 
+    # Flags
+    show_hazards = "-h" in sys.argv
+    hide_scoreboard = "--hide-scoreboard" in sys.argv
+
+    results_subdir = "hazards_results" if show_hazards else "results"
+    results_dir = os.path.join(base_dir, "tests", results_subdir)
     os.makedirs(results_dir, exist_ok=True)
 
     configs = [f for f in os.listdir(config_dir) if f.endswith(".in")]
@@ -54,6 +60,8 @@ if __name__ == "__main__":
                 os.path.join(config_dir, cfg),
                 os.path.join(source_dir, src),
                 results_dir,
+                show_hazards=show_hazards,
+                hide_scoreboard=hide_scoreboard,
             )
 
     print(f"\n[🚀] All scoreboard tests completed. Results in {results_dir}")

@@ -59,7 +59,7 @@ class CPU:
             if result is not None:
                 self.scoreboard.update_entry(result[0], result[1], self.cycle)
 
-                # if its a write, update other FUs waiting for this result (WAR hazard)
+                # if its a write, update other FUs waiting for this result (WAR hazard - cuidado)
                 if result[1] == "Write":
                     for other_fu in self.funits.values():
                         if other_fu.busy:
@@ -95,6 +95,16 @@ class CPU:
         if len(curr_inst.writes) > 0:
             write_register = curr_inst.writes[0].name
             WAW_hazard = self.register_table.registers[write_register] is not None
+
+        if hazard_detection and WAW_hazard:
+            hazards.append(
+                f"WAW hazard: (instruction: {self.pc + 1}) {curr_inst.original_instr()} cannot write to {write_register} because it is already being written by another instruction."
+            )
+
+        if required_fu is None and hazard_detection:
+            hazards.append(
+                f"Structural hazard: No available functional unit ({self.fu_match[curr_inst.op]}) for instruction {curr_inst.original_instr()} (instruction: {self.pc+1})"
+            )
 
         # Free FU and no WAW hazards
         if required_fu is not None and not WAW_hazard:
@@ -175,6 +185,15 @@ class FunctionalUnit:
                 self.rj = False
                 self.rk = False
                 return (self.instruction, "Read")
+            elif hazard_detection:
+                if self.rj is False and self.qj is not None:
+                    hazards.append(
+                        f"RAW hazard: (instruction: {self.instruction_idx + 1}) {self.instruction.original_instr()} cannot read {self.fj.name} because it is being written by another instruction."
+                    )
+                if self.rk is False and self.qk is not None:
+                    hazards.append(
+                        f"RAW hazard: (instruction: {self.instruction_idx + 1}) {self.instruction.original_instr()} cannot read {self.fk.name} because it is being written by another instruction."
+                    )
         if self.state == "Execute":
             self.op_cycle += 1
             if self.op_cycle >= self.cost:
@@ -204,6 +223,10 @@ class FunctionalUnit:
                         and other_fu.fk.name == self.fi.name
                         and other_fu.instruction_idx < self.instruction_idx
                     ):
+                        if hazard_detection:
+                            hazards.append(
+                                f"WAR hazard: (instruction: {self.instruction_idx + 1}) {self.instruction.original_instr()} cannot write to {self.fi.name} because {other_fu.instruction.original_instr()} needs to read it."
+                            )
                         return None
 
                 if self.register_table.registers[self.fi.name] == self.name:
@@ -293,26 +316,42 @@ def load_fu_config(filename):
     return fu_units
 
 
-if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Uso: python dsb.py <fu_config.txt> <arquivo.s>")
-        sys.exit(1)
-
-    fu_config = sys.argv[1]
-    source_code = sys.argv[2]
+def run_simulation(fu_config, source_code, detect_hazards=False):
+    global hazard_detection, hazards
+    hazard_detection = detect_hazards
+    hazards = []
 
     funits = load_fu_config(fu_config)
     scoreboard = Scoreboard()
-
     cpu = CPU(funits, scoreboard=scoreboard)
 
-    # ADICIONAR PARSER AQUI
     lexer = DSBLexer()
     parser = DSBParser()
     with open(source_code) as f:
         instructions = parser.parse(lexer.tokenize(f.read()))
     cpu.load_instructions(instructions)
-
     cpu.run()
 
-    print(scoreboard.to_markdown())
+    # return both the scoreboard and hazards list
+    return scoreboard, hazards
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 3 or len(sys.argv) > 5:
+        print(
+            "Uso: python dsb.py <fu_config.txt> <arquivo.s> [-h for hazards] [--hide-scoreboard]"
+        )
+        sys.exit(1)
+
+    detect_hazards = "-h" in sys.argv
+    hide_scoreboard = "--hide-scoreboard" in sys.argv
+    scoreboard, hazards = run_simulation(sys.argv[1], sys.argv[2], detect_hazards)
+
+    if detect_hazards and hazards:
+        print("Hazards detected during execution:")
+        for hazard in dict.fromkeys(hazards):  # dedup preserve order
+            print(f"- {hazard}")
+        print()
+
+    if not hide_scoreboard:
+        print(scoreboard.to_markdown())
