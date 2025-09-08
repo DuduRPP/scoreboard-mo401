@@ -1,6 +1,0 @@
-Hazards detected during execution:
-- WAW hazard: (instruction: 2) fdiv f2, f1, f3 cannot write to f2 because it is already being written by another instruction.
-- WAW hazard: (instruction: 4) fmul f4, f1, f3 cannot write to f4 because it is already being written by another instruction.
-- Structural hazard: No available functional unit (int) for instruction fsd f4, 64(x10) (instruction: 6)
-- RAW hazard: (instruction: 5) fsd f2, 32(x10) cannot read f2 because it is being written by another instruction.
-

@@ -1,4 +1,0 @@
-Hazards detected during execution:
-- Structural hazard: No available functional unit (add) for instruction fsub f8, f4, f2 (instruction: 3)
-- RAW hazard: (instruction: 2) fadd f4, f2, f6 cannot read f2 because it is being written by another instruction.
-

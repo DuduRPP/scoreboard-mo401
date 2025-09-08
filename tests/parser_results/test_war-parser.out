@@ -1,0 +1,5 @@
+LoadInstr(fld, reads=int x1, writes=float f2)
+ArithInstr(fdiv, reads=float f9, float f3, writes=float f6)
+ArithInstr(fmul, reads=float f2, float f6, writes=float f4)
+ArithInstr(fadd, reads=float f5, float f8, writes=float f2)
+StoreInstr(fsd, reads=float f2, int x1, writes=)

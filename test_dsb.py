@@ -14,15 +14,18 @@ def run_scoreboard(
     # Results filename
     base_config = os.path.splitext(os.path.basename(config_file))[0]
     base_source = os.path.splitext(os.path.basename(source_file))[0]
-    out_file = os.path.join(out_dir, f"{base_config}-{base_source}.out")
+    out_extension = "md"
+    out_file = os.path.join(out_dir, f"{base_config}-{base_source}.{out_extension}")
 
     # Write results
     with open(out_file, "w") as f:
         if show_hazards and hazards:
-            f.write("Hazards detected during execution:\n")
+            f.write("## Hazards detected during execution:\n")
             for hz in dict.fromkeys(hazards):  # deduplicate & preserve order
                 f.write(f"- {hz}\n")
             f.write("\n")
+            if not hide_scoreboard:
+                f.write("## Scoreboard:\n")
         if not hide_scoreboard:
             f.write(scoreboard.to_markdown())
             f.write("\n")

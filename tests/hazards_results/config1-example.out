@@ -1,3 +1,0 @@
-Hazards detected during execution:
-- RAW hazard: (instruction: 3) fdiv f2, f4, f5 cannot read f5 because it is being written by another instruction.
-

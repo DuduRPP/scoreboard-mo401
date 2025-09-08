@@ -1,6 +1,3 @@
 LoadInstr(fld, reads=int x1, writes=float f1)
 LoadInstr(fld, reads=int x1, writes=float f5)
 ArithInstr(fdiv, reads=float f4, float f5, writes=float f2)
-ArithInstr(fmul, reads=float f8, float f9, writes=float f4)
-ArithInstr(fadd, reads=float f2, float f3, writes=float f1)
-StoreInstr(fsd, reads=float f4, int x2, writes=)
