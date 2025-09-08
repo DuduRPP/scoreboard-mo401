@@ -45,6 +45,10 @@ python test_dsb.py -h # + --hide-scoreboard para printar somente os hazards
 python test_parser.py
 ```
 
+Os resultados obtidos para cada um dos testes automáticos estarão localizados nas pastas `/tests/results` para tabelas de scoreboard em formato Markdown, `/tests/hazards_results` para hazards encontrados durante execução e as saídas do parser vão poder ser encontradas na pasta `/tests/parser_results`.
+
+O repositório atual já conta com a saída de uma execução de cada um desses comandos em suas respectivas pastas.
+
 ## Objetivo Geral
 
 Neste trabalho vamos desenvolver um simulador de execução fora de ordem com a técnica de scoreboarding. O simulador deve receber como entrada dois arquivos:
