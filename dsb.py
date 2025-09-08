@@ -2,33 +2,232 @@ import sys
 from typing import List, Dict
 import pandas as pd
 
-from dsb_parser import Instruction
+from dsb_parser import Instruction, DSBLexer, DSBParser
+
+
+class RegisterTable:
+    def __init__(self):
+        self.registers: Dict[str, str] = {f"x{i}": None for i in range(32)} | {
+            f"f{i}": None for i in range(32)
+        }
+
 
 class CPU:
     def __init__(self, funits, scoreboard):
         self.cycle: int = 0
-        self.funits: Dict[str, FunctionalUnit] = funits
-        #ADICIONAR LISTA NO PARSER self.instructions: List[Instruction] = []
+        self.pc: int = 0
+
+        self.register_table: RegisterTable = RegisterTable()
         self.scoreboard: Scoreboard = scoreboard
+
+        self.funits: Dict[str, FunctionalUnit] = funits
+        for fu in self.funits.values():
+            fu.register_table = self.register_table
+            fu.scoreboard = self.scoreboard
+            fu.other_fu = self.funits
+
+        self.instructions: List[Instruction] = []
+
+        self.fu_match = {
+            "fld": "int",
+            "fsd": "int",
+            "fmul": "mult",
+            "fdiv": "div",
+            "fadd": "add",
+            "fsub": "add",
+        }
 
     def load_instructions(self, instructions):
         self.instructions = instructions
         for instr in instructions:
             self.scoreboard.add_entry(instr)
 
+    def run(self):
+        while self.pc < len(self.instructions) or not self.scoreboard.finished():
+            self.tick()
+
     def tick(self):
         self.cycle += 1
+
+        if self.pc < len(self.instructions):
+            self.try_issue()
+
         for fu in self.funits.values():
-            fu.tick()
+            result = None
+            if fu.state != "Read" and fu.state != "Issue":
+                result = fu.tick()
+            if result is not None:
+                self.scoreboard.update_entry(result[0], result[1], self.cycle)
+
+                # if its a write, update other FUs waiting for this result (WAR hazard)
+                if result[1] == "Write":
+                    for other_fu in self.funits.values():
+                        if other_fu.busy:
+                            if other_fu.qj == fu.name:
+                                other_fu.state = "ReadNext"
+                                other_fu.qj = None
+                                other_fu.rj = True
+                            if other_fu.qk == fu.name:
+                                other_fu.state = "ReadNext"
+                                other_fu.qk = None
+                                other_fu.rk = True
+
+        for fu in self.funits.values():
+            if fu.state == "Read" or fu.state == "Issue":
+                result = fu.tick()
+                if result is not None:
+                    self.scoreboard.update_entry(result[0], result[1], self.cycle)
+
+    def find_available_fu(self, op):
+        required_fu = self.fu_match[op]
+        for name, fu in self.funits.items():
+            if name.startswith(required_fu) and fu.available():
+                return name
+        return None
+
+    def try_issue(self):
+        # Check free functional units
+        curr_inst = self.instructions[self.pc]
+        required_fu = self.find_available_fu(curr_inst.op)
+
+        WAW_hazard = False
+
+        if len(curr_inst.writes) > 0:
+            write_register = curr_inst.writes[0].name
+            WAW_hazard = self.register_table.registers[write_register] is not None
+
+        # Free FU and no WAW hazards
+        if required_fu is not None and not WAW_hazard:
+            self.funits[required_fu].add_instruction(curr_inst, self.pc)
+            self.scoreboard.update_entry(curr_inst, "Issue", self.cycle)
+            self.pc += 1
+
 
 class FunctionalUnit:
-    def __init__(self, count, cost):
-        self.count: int = count
+    def __init__(self, name, cost):
+        self.name: str = name
         self.cost: int = cost
-        self.instructions: List[Instruction] = []
 
-    def add_instruction(self, instruction):
-        self.instructions.append(instruction)
+        self.register_table: RegisterTable = None
+        self.scoreboard: Scoreboard = None
+        self.other_fu: Dict[str, FunctionalUnit] = None
+        self.state: str = "Issue"
+
+        self.op_cycle = 0
+        self.busy = False
+
+        self.instruction: Instruction = None
+        self.instruction_idx = -1
+
+        self.op = None
+        self.fi = None
+        self.fj = None
+        self.fk = None
+        self.qj = None
+        self.qk = None
+        self.rj = False
+        self.rk = False
+
+    def add_instruction(self, instruction, idx):
+        self.busy = True
+        self.instruction = instruction
+        self.instruction_idx = idx
+        self.op = instruction.op
+        if len(instruction.writes) > 0:
+            self.fi = instruction.writes[0]
+        if len(instruction.reads) > 0:
+            self.fj = instruction.reads[0]
+            self.qj = self.register_table.registers.get(self.fj.name)
+            if self.qj is None:
+                self.rj = True
+        if len(instruction.reads) > 1:
+            self.fk = instruction.reads[1]
+            self.qk = self.register_table.registers.get(self.fk.name)
+            if self.qk is None:
+                self.rk = True
+
+        if self.fi is not None:
+            self.register_table.registers[self.fi.name] = self.name
+
+        # print(f"Added instruction {instruction} to FU {self}")
+        # print(
+        #     f"State after adding: op={self.op}, fi={self.fi}, fj={self.fj}, fk={self.fk}, qj={self.qj}, qk={self.qk}, rj={self.rj}, rk={self.rk}"
+        # )
+
+    def available(self):
+        return not self.busy
+
+    def tick(self):
+        if self.state == "Issue":
+            if self.busy:
+                self.state = "Read"
+                return None
+        if self.state == "ReadNext":
+            self.state = "Read"
+            return None
+        if self.state == "Read":
+            # Verify RAW hazards
+            if (self.rj is True or self.qj is None) and (
+                self.rk is True or self.qk is None
+            ):
+                self.state = "Execute"
+                self.op_cycle = 0
+                self.rj = False
+                self.rk = False
+                return (self.instruction, "Read")
+        if self.state == "Execute":
+            self.op_cycle += 1
+            if self.op_cycle >= self.cost:
+                self.state = "Write"
+                return (self.instruction, "Execute")
+        if self.state == "Write":
+            # Write result
+            if self.fi is not None:
+                # TODO: Need to verify WAR hazards, checking if another instruction before is still waiting to read this register
+                # If so, do not write and wait for next cycle
+                # PROBABLY NEED TO CHANGE WHERE FU TABLE IS STORED (CHANGE TO CPU?)
+
+                for other_fu in self.other_fu.values():
+                    if (
+                        not other_fu.busy
+                        or other_fu.state != "Read"
+                        or other_fu is self
+                    ):
+                        continue
+                    # Verify if other_fu is waiting
+                    if (
+                        other_fu.fj is not None
+                        and other_fu.fj.name == self.fi.name
+                        and other_fu.instruction_idx < self.instruction_idx
+                    ) or (
+                        other_fu.fk is not None
+                        and other_fu.fk.name == self.fi.name
+                        and other_fu.instruction_idx < self.instruction_idx
+                    ):
+                        return None
+
+                if self.register_table.registers[self.fi.name] == self.name:
+                    self.register_table.registers[self.fi.name] = None
+
+            # Clear FU
+            self.busy = False
+            finished_instruction = self.instruction
+            self.instruction = None
+            self.op = None
+            self.fi = None
+            self.fj = None
+            self.fk = None
+            self.qj = None
+            self.qk = None
+            self.rj = False
+            self.rk = False
+            self.state = "Issue"
+            self.op_cycle = 0
+
+            # Need to update other FUs waiting for this result
+            return (finished_instruction, "Write")
+
+        return None
 
     def __len__(self):
         return len(self.instructions)
@@ -36,34 +235,63 @@ class FunctionalUnit:
 
 class Scoreboard:
     def __init__(self):
-        self.records = []
+        # dict: Instruction -> dict com Issue, Read, Execute, Write
+        self.instruction_status = {}
 
-    def add_entry(self, instr, issue=None, read=None, execute=None, write=None):
-        self.records.append({
-            "Instruction": instr,
+    def finished(self):
+        return all(
+            status["Write"] is not None for status in self.instruction_status.values()
+        )
+
+    def add_entry(
+        self,
+        instr,
+        issue=None,
+        read=None,
+        execute=None,
+        write=None,
+    ):
+        self.instruction_status[instr] = {
+            "Instruction": instr.original_instr(),
             "Issue": issue,
             "Read": read,
             "Execute": execute,
             "Write": write,
-        })
+        }
 
-    def update_entry(self, idx, stage, cycle):
+    def update_entry(self, instr, stage, cycle):
         """Atualiza um estágio (issue/read/execute/write) da instrução"""
-        self.records[idx][stage] = cycle
+        if instr in self.instruction_status:
+            self.instruction_status[instr][stage] = cycle
+        else:
+            raise KeyError(f"Instrução {instr} não encontrada no scoreboard")
 
     def to_dataframe(self):
-        return pd.DataFrame(self.records)
+        # transforma o dict em lista de linhas
+        return pd.DataFrame(list(self.instruction_status.values()))
 
     def to_markdown(self):
         return self.to_dataframe().to_markdown(index=False)
 
+
 def load_fu_config(filename):
     fu_units = {}
+    fu_counts = {
+        "int": 0,
+        "add": 0,
+        "mult": 0,
+        "div": 0,
+    }
     with open(filename) as f:
         for line in f:
-            name, count, latency = line.strip().split()
-            fu_units[name] = FunctionalUnit(int(count), int(latency))
+            name, count, cost = line.strip().split()
+            for _ in range(int(count)):
+                fu_counts[name] = fu_counts[name] + 1
+                aux = name + str(fu_counts[name])
+                fu_units[aux] = FunctionalUnit(aux, int(cost))
+
     return fu_units
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
@@ -77,9 +305,14 @@ if __name__ == "__main__":
     scoreboard = Scoreboard()
 
     cpu = CPU(funits, scoreboard=scoreboard)
-    cpu.load_instructions([])
 
-    scoreboard.add_entry("Início", issue=cpu.cycle, read=cpu.cycle + 1, execute=cpu.cycle + 2, write=cpu.cycle + 3)
+    # ADICIONAR PARSER AQUI
+    lexer = DSBLexer()
+    parser = DSBParser()
+    with open(source_code) as f:
+        instructions = parser.parse(lexer.tokenize(f.read()))
+    cpu.load_instructions(instructions)
 
+    cpu.run()
 
     print(scoreboard.to_markdown())

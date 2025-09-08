@@ -1,22 +1,35 @@
 from sly import Lexer, Parser
 from typing import List
 
+
 class Register:
     def __init__(self, name, reg_type):
         self.name = name
         self.reg_type = reg_type
+
     def __str__(self):
         return f"{self.reg_type} {self.name}"
+
     def __repr__(self):
         return self.__str__()
+
 
 class Instruction:
     def __init__(self, op, reads=None, writes=None):
         self.op: str = op
-        self.reads: List[Register] = reads or []   # source registers
-        self.writes: List[Register] = writes or [] # target registers
+        self.reads: List[Register] = reads or []  # source registers
+        self.writes: List[Register] = writes or []  # target registers
+
+    def original_instr(self):
+        return self.__str__()
+
     def __str__(self):
-        return f"{self.__class__.__name__}({self.op}, reads={', '.join(str(r) for r in self.reads)}, writes={', '.join(str(r) for r in self.writes)})"
+        return (
+            f"{self.__class__.__name__}("
+            f"{self.op}, reads={', '.join(str(r) for r in self.reads)}, "
+            f"writes={', '.join(str(r) for r in self.writes)})"
+        )
+
     def __repr__(self):
         return self.__str__()
 
@@ -28,6 +41,9 @@ class ArithInstr(Instruction):
         self.rs1: Register = rs1
         self.rs2: Register = rs2
 
+    def original_instr(self):
+        return f"{self.op} {self.rd.name}, {self.rs1.name}, {self.rs2.name}"
+
 
 class LoadInstr(Instruction):
     def __init__(self, op, rd, base, imm):
@@ -36,6 +52,13 @@ class LoadInstr(Instruction):
         self.base: Register = base
         self.imm: int = imm
 
+    def original_instr(self):
+        if self.imm != 0:
+            return f"{self.op} {self.rd.name}, {self.imm}({self.base.name})"
+        else:
+            return f"{self.op} {self.rd.name}, {self.base.name}"
+
+
 class StoreInstr(Instruction):
     def __init__(self, op, rs, base, imm):
         super().__init__(op, reads=[rs, base], writes=[])
@@ -43,71 +66,94 @@ class StoreInstr(Instruction):
         self.base: Register = base
         self.imm: int = imm
 
+    def original_instr(self):
+        if self.imm != 0:
+            return f"{self.op} {self.rs.name}, {self.imm}({self.base.name})"
+        else:
+            return f"{self.op} {self.rs.name}, {self.base.name}"
+
 
 class DSBLexer(Lexer):
-    instr_tokens = { FREG, XREG, NUM, OP }
-    literal_tokens = { COMMA, LPAREN, RPAREN }
+    instr_tokens = {FREG, XREG, NUM, OP}
+    literal_tokens = {COMMA, LPAREN, RPAREN}
     tokens = instr_tokens | literal_tokens
-    ignore = " \t"
 
     # Literals
-    COMMA = r','
-    LPAREN = r'\('
-    RPAREN = r'\)'
+    COMMA = r","
+    LPAREN = r"\("
+    RPAREN = r"\)"
 
     # Tokens
-    FREG = r'f[0-9]+'
-    XREG = r'x[0-9]+'
-    NUM = r'[+-]?[0-9]+'
+    FREG = r"f[0-9]+"
+    XREG = r"x[0-9]+"
+    NUM = r"[+-]?[0-9]+"
 
     # List of supported operations
-    OP_LIST = ['fld', 'fsd', 'fadd', 'fsub', 'fmul', 'fdiv']
-    OP = r'(' + '|'.join(OP_LIST) + r')'
+    OP_LIST = ["fld", "fsd", "fadd", "fsub", "fmul", "fdiv"]
+    OP = r"(" + "|".join(OP_LIST) + r")"
+
+    # ignored tokens
+    ignore = " \t"
+    ignore_newline = r"\n+"
+    ignore_comment = r"\#.*"
+
 
 class DSBParser(Parser):
     tokens = DSBLexer.tokens
 
-    @_('arith_instr')
+    @_("instruction_list")
+    def program(self, p):
+        return p.instruction_list
+
+    @_("instruction_list instruction")
+    def instruction_list(self, p):
+        return p.instruction_list + [p.instruction]
+
+    @_("instruction")
+    def instruction_list(self, p):
+        return [p.instruction]
+
+    @_("arith_instr")
     def instruction(self, p):
         return p.arith_instr
 
-    @_('mem_instr')
+    @_("mem_instr")
     def instruction(self, p):
         return p.mem_instr
 
     # Arithmetic: fadd rd, rs1, rs2
-    @_('OP FREG COMMA FREG COMMA FREG')
+    @_("OP FREG COMMA FREG COMMA FREG")
     def arith_instr(self, p):
-        rd = Register(p.FREG0, 'float')
-        rs1 = Register(p.FREG1, 'float')
-        rs2 = Register(p.FREG2, 'float')
+        rd = Register(p.FREG0, "float")
+        rs1 = Register(p.FREG1, "float")
+        rs2 = Register(p.FREG2, "float")
         return ArithInstr(p.OP, rd, rs1, rs2)
 
     # Memory: fld f1, 0(x2)
-    @_('OP FREG COMMA NUM LPAREN XREG RPAREN')
+    @_("OP FREG COMMA NUM LPAREN XREG RPAREN")
     def mem_instr(self, p):
         # TODO: FUTURE POSSIBLE OPTIMIZATION IS ADDING DIFFERENT OPS TO DIFFERENT LEXERS
-        if p.OP == 'fld':
-            rd = Register(p.FREG, 'float')
+        if p.OP == "fld":
+            rd = Register(p.FREG, "float")
             imm = int(p.NUM)
-            rs = Register(p.XREG, 'int')
+            rs = Register(p.XREG, "int")
             return LoadInstr(p.OP, rd, rs, imm)
-        elif p.OP == 'fsd':
-            rs = Register(p.FREG, 'float')
+        elif p.OP == "fsd":
+            rs = Register(p.FREG, "float")
             imm = int(p.NUM)
-            rd = Register(p.XREG, 'int')
+            rd = Register(p.XREG, "int")
             return StoreInstr(p.OP, rs, rd, imm)
 
     # Memory: fld f1, x2
-    @_('OP FREG COMMA XREG')
+    @_("OP FREG COMMA XREG")
     def mem_instr(self, p):
-        if p.OP == 'fld':
-            rd = Register(p.FREG, 'float')
-            rs = Register(p.XREG, 'int')
+        if p.OP == "fld":
+            rd = Register(p.FREG, "float")
+            rs = Register(p.XREG, "int")
             return LoadInstr(p.OP, rd, rs, 0)
-        elif p.OP == 'fsd':
-            rs = Register(p.FREG, 'float')
-            rd = Register(p.XREG, 'int')
+        elif p.OP == "fsd":
+            rs = Register(p.FREG, "float")
+            rd = Register(p.XREG, "int")
             return StoreInstr(p.OP, rs, rd, 0)
 
 
@@ -124,9 +170,9 @@ if __name__ == "__main__":
     parser = DSBParser()
 
     with open(filename, "r") as f:
-        for line in f:
-            line = line.strip()
-            if not line:   # pular linhas vazias
-                continue
-            instr = parser.parse(lexer.tokenize(line))
-            print(line, "->",instr)
+        code = f.read()
+
+    program = parser.parse(lexer.tokenize(code))
+
+    for instr in program:
+        print(instr)
