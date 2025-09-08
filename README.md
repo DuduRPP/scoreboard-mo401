@@ -1,4 +1,49 @@
 # Simulador de execução fora de ordem com scoreboard - MO401 - 2s2025
+    - Nome: Eduardo Rambauske Pereira Pinto
+    - RA: 247055
+
+## Como Instalar Dependências e Executar Programa
+
+### 1. Criar ambiente virtual (recomendado)
+```bash
+# criar o ambiente virtual (Python 3.10+ recomendado)
+python -m venv .venv
+
+# ativar o ambiente
+# no Linux/Mac:
+source .venv/bin/activate
+# no Windows (PowerShell):
+.venv\Scripts\Activate.ps1
+```
+### 2. Instalar dependências com pip
+```bash
+pip install -r requirements.txt
+```
+### 3.1. Execução manual
+```bash
+# Gera Tabela de Scoreboard para um código fonte com uma configuração de FUs
+python dsb.py tests/<config>.in tests/<program>.s
+
+# Para verificar os hazards encontrados
+python dsb.py tests/<config>.in tests/<program>.s -h # + --hide-scoreboard para printar somente os hazards
+
+# Para verificar saída do parser
+python dsb_parser.py tests/<program>.s
+
+```
+
+### 3.2. Execução automática de testes
+
+```bash
+# Gera Tabela de Scoreboard para um código fonte com uma configuração de FUs
+python test_dsb.py
+
+# Para verificar os hazards encontrados
+python test_dsb.py -h # + --hide-scoreboard para printar somente os hazards
+
+# Para verificar saídas do parser
+python test_parser.py
+```
 
 ## Objetivo Geral
 
